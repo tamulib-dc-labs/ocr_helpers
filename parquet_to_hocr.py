@@ -60,7 +60,7 @@ HOCR_TEMPLATE = """\
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
   <meta name="ocr-system" content="dots.mocr rednote-hilab/dots.mocr" />
-  <meta name="ocr-capabilities" content="ocr_page ocr_block ocr_line ocr_word" />
+  <meta name="ocr-capabilities" content="ocr_page ocr_carea ocr_line ocr_word" />
   <title>{title}</title>
 </head>
 <body>
@@ -134,7 +134,7 @@ def row_to_hocr(row, page_id, label):
 
     page_lines = [
         f'<div class="ocr_page" id="page_{page_id}" title="'
-        f'image "{page_id}"; label {label}; {bbox_attr(0, 0, page_w, page_h)}">'
+        f"image '{page_id}'; {bbox_attr(0, 0, page_w, page_h)}\">"
     ]
     for i, block in enumerate(blocks):
         page_lines.append(block_to_hocr(i, block, page_w, page_h))
