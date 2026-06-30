@@ -9,8 +9,11 @@
 # ///
 """Convert OCR data from parquet files to hOCR format.
 
-Each row produces one .hocr file named by its label (row index within the
-full dataset across all parquet shards).
+Each row produces one .html (hOCR) file. Files are grouped into
+subdirectories named after the row's source label — resolved from the
+HuggingFace ClassLabel names embedded in the parquet schema metadata
+(e.g. "Early History of A and M", "First Five", "Fragments of Early
+History") — with a per-folder sequential page number.
 
 Usage:
     python parquet_to_hocr.py [--input DIR] [--output DIR]
@@ -24,11 +27,29 @@ import argparse
 import html
 import io
 import json
+import re
 import sys
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 from PIL import Image
+
+
+def slugify(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_")
+
+
+def load_label_names(parquet_files):
+    """Read ClassLabel names from HF dataset metadata embedded in the schema."""
+    schema = pq.ParquetFile(parquet_files[0]).schema_arrow
+    meta = schema.metadata or {}
+    hf_meta = meta.get(b"huggingface")
+    if not hf_meta:
+        return None
+    info = json.loads(hf_meta)
+    label_feature = info.get("info", {}).get("features", {}).get("label", {})
+    return label_feature.get("names")
 
 
 HOCR_TEMPLATE = """\
@@ -133,15 +154,32 @@ def convert(input_dir: Path, output_dir: Path):
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    label_names = load_label_names(parquet_files)
+    if label_names:
+        print(f"Resolved label names: {label_names}")
+    else:
+        print("Warning: no ClassLabel names found in schema metadata; using raw label values")
+
+    page_counters = {}  # folder name -> next page number
     total = 0
     for pf in parquet_files:
         print(f"Processing {pf.name} ...")
         df = pd.read_parquet(pf)
-        shard = pf.stem  # e.g. "train-00000-of-00015"
-        for row_idx, (_, row) in enumerate(df.iterrows()):
-            page_id = f"{shard}_{row_idx:04d}"
-            hocr = row_to_hocr(row, page_id=page_id, label=row["label"])
-            out_path = output_dir / f"{page_id}.html"
+        for _, row in df.iterrows():
+            label = row["label"]
+            folder = label_names[label] if label_names else str(label)
+            folder_slug = slugify(folder)
+
+            page_counters.setdefault(folder_slug, 0)
+            page_counters[folder_slug] += 1
+            page_num = page_counters[folder_slug]
+
+            page_id = f"{folder_slug}_p{page_num:04d}"
+            hocr = row_to_hocr(row, page_id=page_id, label=folder)
+
+            folder_dir = output_dir / folder_slug
+            folder_dir.mkdir(parents=True, exist_ok=True)
+            out_path = folder_dir / f"{page_id}.html"
             out_path.write_text(hocr, encoding="utf-8")
             total += 1
 
