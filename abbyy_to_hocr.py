@@ -85,7 +85,7 @@ def render_page(page_elem, page_num, stem):
 
     lines_out = [
         f'<div class="ocr_page" id="page_{page_num}" '
-        f'title="image \"{page_id}\"; {bbox(0, 0, pw, ph)}">',
+        f"title=\"image '{page_id}'; {bbox(0, 0, pw, ph)}\">",
     ]
 
     block_idx = 0
@@ -175,10 +175,10 @@ def convert(input_path: Path, output_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Convert ABBYY XML to hOCR")
-    parser.add_argument("input", help="ABBYY .xml or .gz file")
+    parser.add_argument("input", help="ABBYY .xml or .gz file, or a directory containing them")
     parser.add_argument(
         "--output",
-        help="Output directory (default: hocr_output next to input file)",
+        help="Output directory (default: hocr_output next to input)",
     )
     args = parser.parse_args()
 
@@ -187,8 +187,20 @@ def main():
         print(f"Error: {input_path} not found", file=sys.stderr)
         sys.exit(1)
 
-    output_dir = Path(args.output) if args.output else input_path.parent / "hocr_output"
-    convert(input_path, output_dir)
+    if input_path.is_dir():
+        files = sorted(
+            f for f in input_path.iterdir()
+            if f.suffix in {".gz", ".xml"} or f.name.endswith("_abbyy")
+        )
+        if not files:
+            print(f"Error: no .xml or .gz files found in {input_path}", file=sys.stderr)
+            sys.exit(1)
+        output_dir = Path(args.output) if args.output else input_path / "hocr_output"
+        for f in files:
+            convert(f, output_dir)
+    else:
+        output_dir = Path(args.output) if args.output else input_path.parent / "hocr_output"
+        convert(input_path, output_dir)
 
 
 if __name__ == "__main__":
